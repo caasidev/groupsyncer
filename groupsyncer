@@ -1,0 +1,107 @@
+#!/bin/bash
+set -euo pipefail
+
+# Get script directory for relative imports
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
+
+# Source all library modules
+source "$SCRIPT_DIR/lib/config.sh"
+source "$SCRIPT_DIR/lib/logger.sh"
+source "$SCRIPT_DIR/lib/ip.sh"
+source "$SCRIPT_DIR/lib/aws.sh"
+
+# Main application logic
+main() {
+	log_section "AWS Security Group Rules Updater"
+
+	# Parse command line arguments
+	parse_args "$@"
+	validate_config
+
+	# Show log file location early
+	echo "Log file: $LOG_FILE"
+	echo
+
+	# Initialize logging
+	init_log_file "$0" "$@"
+
+	# Run prerequisites check
+	log_section "Prerequisites Check"
+	check_prerequisites
+
+	# Detect or validate IP address
+	log_section "IP Address Detection"
+	detect_current_ip
+
+	# Show current configuration
+	log_section "Configuration Summary"
+	show_config
+	echo
+
+	# Process AWS profiles
+	local total_updated=0
+	local total_failed=0
+	local profiles_processed=0
+
+	# Get list of profiles to process
+	local profiles_list
+	profiles_list=$(get_aws_profiles)
+
+	log_section "Processing AWS Profiles"
+
+	# Process each profile
+	while IFS= read -r profile; do
+		if [[ -n "$profile" ]]; then
+			log_info "Processing profile: $profile"
+
+			# Process profile and capture result
+			local result
+			result=$(process_profile "$profile")
+
+			if [[ -n "$result" ]]; then
+				local updated
+				local failed
+				updated=$(echo "$result" | cut -d' ' -f1)
+				failed=$(echo "$result" | cut -d' ' -f2)
+
+				# Validate that updated and failed are numbers
+				if [[ "$updated" =~ ^[0-9]+$ ]] && [[ "$failed" =~ ^[0-9]+$ ]]; then
+					# Use arithmetic assignment to avoid exit code issues with set -e
+					total_updated=$((total_updated + updated))
+					total_failed=$((total_failed + failed))
+					profiles_processed=$((profiles_processed + 1))
+
+					log_pass "Profile '$profile' summary: $updated groups updated, $failed groups failed"
+				else
+					log_warn "Invalid result format from profile '$profile': '$result'"
+				fi
+			fi
+
+			echo
+		fi
+	done <<<"$profiles_list"
+
+	# Final summary
+	log_section "Final Summary"
+	echo "Profiles processed: $profiles_processed"
+	echo "Security groups updated: $total_updated"
+	echo "Security groups failed: $total_failed"
+	echo "Log file: $LOG_FILE"
+	echo "Completed: $(date)"
+
+	# Set appropriate exit code
+	if [[ $total_failed -gt 0 ]]; then
+		log_warn "Some updates failed. Check the log file for details."
+		exit 1
+	elif [[ $total_updated -eq 0 ]]; then
+		log_info "No updates were needed."
+		exit 0
+	else
+		log_pass "All updates completed successfully!"
+		exit 0
+	fi
+}
+
+# Run main function with all arguments
+main "$@"
