@@ -24,7 +24,7 @@ get_aws_profiles() {
 check_profile_access() {
 	local profile=$1
 
-	log_verbose "Checking access for profile: $profile"
+	log_verbose_silent "Checking access for profile: $profile"
 
 	if ! aws sts get-caller-identity --profile "$profile" >/dev/null 2>&1; then
 		log_warn "Cannot access profile '$profile' - may need MFA or credentials refresh"
@@ -38,7 +38,7 @@ check_profile_access() {
 find_matching_security_groups() {
 	local profile=$1
 
-	log_verbose "Searching for security groups in profile: $profile"
+	log_verbose_silent "Searching for security groups in profile: $profile"
 
 	local security_groups
 	if ! security_groups=$(timeout 60s aws ec2 describe-security-groups --profile "$profile" --output json --max-items 1000 2>/dev/null); then
@@ -71,7 +71,7 @@ find_matching_security_groups() {
 		) |
 		.GroupId
 	" 2>/dev/null); then
-		log_verbose "jq command failed for profile: $profile"
+		log_verbose_silent "jq command failed for profile: $profile"
 		matching_groups=""
 	fi
 
@@ -108,10 +108,10 @@ get_current_rules() {
 		--output json 2>/dev/null |
 		jq -r --arg desc "$RULE_DESCRIPTION" "
 		.SecurityGroups[0].IpPermissions[] |
-		select($port_conditions) |
-		.IpRanges[] |
+		select($port_conditions) as \$permission |
+		\$permission.IpRanges[] |
 		select(.Description != null and (.Description | contains(\$desc))) |
-		(.FromPort | tostring) + \" \" + .CidrIp + \" \" + (.Description // \"\")
+		(\$permission.FromPort | tostring) + \" \" + .CidrIp + \" \" + (.Description // \"\")
 	" 2>/dev/null || echo ""
 }
 

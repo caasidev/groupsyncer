@@ -29,7 +29,7 @@ log_info() {
 # Verbose Logging Functions
 log_verbose() {
 	if [[ "$VERBOSE" == true ]]; then
-		if [[ "$SILENT_MODE" == true ]]; then
+		if [[ "${SILENT_MODE:-false}" == true ]]; then
 			echo -e "${LOG_BLUE}[DEBUG] ${LOG_NC} $1" >>"$LOG_FILE"
 		else
 			echo -e "${LOG_BLUE}[DEBUG] ${LOG_NC} $1" | tee -a "$LOG_FILE"
